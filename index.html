@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Blok Blas — game susun blok</title>
+<style>
+  :root{
+    --bg:#0b1020;
+    --bg2:#131b33;
+    --papan:#0e1526;
+    --sel:#1b2440;
+    --sel2:#222d4d;
+    --teks:#e8edf7;
+    --redup:#8b9ac4;
+    --aksen:#5eead4;
+    --g:6px;              /* gap antar sel papan */
+    --r:10px;             /* radius sel */
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  [hidden]{display:none !important}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+    color:var(--teks);
+    background:
+      radial-gradient(900px 500px at 15% -10%, #1b2a52 0%, transparent 60%),
+      radial-gradient(700px 500px at 100% 0%, #23324f 0%, transparent 55%),
+      var(--bg);
+    display:flex; align-items:center; justify-content:center;
+    padding:14px;
+    overflow:hidden;
+    touch-action:none;
+  }
+  .app{width:100%;max-width:480px;display:flex;flex-direction:column;gap:14px}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:.3px;font-size:clamp(17px,4.6vw,21px)}
+  .brand span.dot{width:10px;height:10px;border-radius:3px;background:var(--aksen);box-shadow:0 0 14px var(--aksen)}
+  .kanan{display:flex;align-items:center;gap:8px}
+  .kotak-skor{
+    background:linear-gradient(180deg,#1a2542,#141d34);
+    border:1px solid #2a3559;
+    border-radius:12px;padding:6px 11px;min-width:74px;text-align:right;
+    box-shadow:0 6px 18px rgba(0,0,0,.25) inset, 0 1px 0 rgba(255,255,255,.04)
+  }
+  .kotak-skor small{display:block;font-size:9px;letter-spacing:1.4px;color:var(--redup);font-weight:700}
+  .kotak-skor strong{font-size:clamp(15px,4.2vw,19px);font-variant-numeric:tabular-nums}
+  .ikon{
+    width:38px;height:38px;border-radius:12px;border:1px solid #2a3559;
+    background:#18213a;color:var(--teks);font-size:16px;cursor:pointer;
+    display:grid;place-items:center;transition:transform .12s ease, background .2s
+  }
+  .ikon:hover{background:#1f2a48}
+  .ikon:active{transform:scale(.93)}
+
+  .papan{
+    position:relative;
+    width:100%; aspect-ratio:1/1;
+    display:grid;
+    grid-template-columns:repeat(8,1fr);
+    grid-template-rows:repeat(8,1fr);
+    gap:var(--g);
+    padding:var(--g);
+    background:linear-gradient(180deg,#101a2e,#0b1424);
+    border:1px solid #263252;
+    border-radius:18px;
+    box-shadow:0 24px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(94,234,212,.05)
+  }
+  .sel{
+    background:var(--sel);
+    border-radius:var(--r);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045), inset 0 -2px 0 rgba(0,0,0,.25);
+    transition:background .15s ease, box-shadow .15s ease;
+  }
+  .sel.isi{
+    box-shadow:inset 0 2px 0 rgba(255,255,255,.28), inset 0 -3px 0 rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.35);
+  }
+  .sel.bayang{outline:2px solid rgba(255,255,255,.35);outline-offset:-2px}
+  .sel.salah{background:#3b1b2a !important;box-shadow:inset 0 0 0 2px rgba(248,113,113,.55)}
+  .sel.pop{animation:pop .22s ease}
+  @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.16)}100%{transform:scale(1)}}
+  .sel.hapus{animation:hapus .26s ease forwards}
+  @keyframes hapus{
+    0%{filter:brightness(1.6)}
+    100%{filter:brightness(2.4);opacity:0;transform:scale(.55)}
+  }
+
+  .tray{
+    display:grid;grid-template-columns:repeat(3,1fr);
+    gap:8px;align-items:center;justify-items:center;
+  }
+  .slot{
+    width:100%;height:var(--slot-h,98px);
+    display:grid;place-items:center;
+    padding:8px;
+    border-radius:14px;background:rgba(255,255,255,.022);
+    border:1px dashed rgba(255,255,255,.05);
+    transition:opacity .2s
+  }
+  .slot.kosong{border-style:solid;border-color:transparent;background:transparent}
+
+  /* satu blok kecil di dalam piece / ghost */
+  .b{width:var(--s);height:var(--s);border-radius:9px;background:var(--warna);
+     box-shadow:inset 0 2px 0 rgba(255,255,255,.32), inset 0 -3px 0 rgba(0,0,0,.28)}
+
+  .piece{display:grid;gap:4px;cursor:grab;touch-action:none;
+         filter:drop-shadow(0 6px 10px rgba(0,0,0,.35));
+         transition:transform .12s ease, filter .12s ease}
+  .piece:hover{transform:translateY(-2px) scale(1.03)}
+  .piece:active{cursor:grabbing}
+  .piece.dipakai{opacity:.25;pointer-events:none;filter:none}
+
+  #ghost{
+    position:fixed;left:0;top:0;z-index:50;pointer-events:none;
+    display:grid;gap:var(--g);
+    filter:drop-shadow(0 14px 22px rgba(0,0,0,.5));
+    will-change:transform
+  }
+
+  .skor-terbang{
+    position:fixed;z-index:60;pointer-events:none;font-weight:800;color:var(--aksen);
+    text-shadow:0 2px 10px rgba(0,0,0,.6);animation:naik 720ms ease forwards;font-size:18px
+  }
+  @keyframes naik{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-46px);opacity:0}}
+
+  .overlay{
+    position:fixed;inset:0;z-index:80;display:grid;place-items:center;
+    background:rgba(7,11,22,.62);backdrop-filter:blur(3px);padding:18px;
+    animation:masuk .22s ease
+  }
+  @keyframes masuk{from{opacity:0}to{opacity:1}}
+  .kartu{
+    width:100%;max-width:330px;text-align:center;padding:24px 22px;
+    border-radius:20px;background:linear-gradient(180deg,#18223c,#111a2e);
+    border:1px solid #2b3760;box-shadow:0 30px 70px rgba(0,0,0,.55)
+  }
+  .kartu h2{margin:0 0 6px;font-size:22px}
+  .kartu p{margin:0 0 16px;color:var(--redup);font-size:14px}
+  .kartu .besar{font-size:40px;font-weight:800;color:var(--aksen);font-variant-numeric:tabular-nums;line-height:1.1}
+  .kartu .rekor{font-size:12px;color:var(--redup);margin:6px 0 18px}
+  .tombol{
+    width:100%;padding:13px 18px;border-radius:13px;border:0;cursor:pointer;
+    font-weight:800;font-size:15px;color:#062018;
+    background:linear-gradient(180deg,#7ef3dd,#3dd0b6);
+    box-shadow:0 10px 24px rgba(61,208,182,.28)
+  }
+  .tombol:active{transform:translateY(1px)}
+  .petunjuk{text-align:center;color:#6f7fa6;font-size:11.5px;line-height:1.5}
+  @media (max-width:400px){
+    .app{gap:12px}
+    .slot{height:var(--slot-h,84px)}
+    .petunjuk{font-size:11px}
+  }
+  @media (max-width:390px){
+    .brand{font-size:16px}
+    .kotak-skor{min-width:62px;padding:5px 8px;border-radius:10px}
+    .kotak-skor small{font-size:8.5px;letter-spacing:1.1px}
+    .ikon{width:34px;height:34px;border-radius:10px;font-size:15px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><span class="dot"></span> Blok Blas</div>
+    <div class="kanan">
+      <div class="kotak-skor"><small>SKOR</small><strong id="skor">0</strong></div>
+      <div class="kotak-skor"><small>TERBAIK</small><strong id="terbaik">0</strong></div>
+      <button class="ikon" id="suara" title="Suara">🔊</button>
+      <button class="ikon" id="ulang" title="Main ulang">↻</button>
+    </div>
+  </header>
+
+  <div class="papan" id="papan"></div>
+  <div class="tray" id="tray"></div>
+  <div class="petunjuk">Tarik blok ke papan. Penuhi satu baris atau kolom untuk menghapusnya.</div>
+</div>
+
+<div id="ghost" hidden></div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="kartu">
+    <h2>Yah, penuh!</h2>
+    <p>Tidak ada blok yang muat lagi.</p>
+    <div class="besar" id="skorAkhir">0</div>
+    <div class="rekor" id="pesanRekor">skor akhir</div>
+    <button class="tombol" id="mainLagi">Main lagi</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const N = 8;                       // papan 8x8
+  const WARNA = ['#f472b6','#60a5fa','#34d399','#fbbf24','#a78bfa','#f87171','#22d3ee','#fb923c'];
+
+  // ── Bentuk blok: daftar koordinat [baris, kolom] ──────────────────────────
+  const BENTUK = [];
+  const garis = (n, tegak) => Array.from({length:n}, (_,i) => tegak ? [i,0] : [0,i]);
+  [1,2,3,4,5].forEach(n => { BENTUK.push(garis(n,false)); BENTUK.push(garis(n,true)); });
+  BENTUK.push([[0,0],[0,1],[1,0],[1,1]]);                                  // 2x2
+  BENTUK.push([[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]]);    // 3x3
+  BENTUK.push([[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]]);                      // 2x3
+  BENTUK.push([[0,0],[0,1],[1,0],[1,1],[2,0],[2,1]]);                      // 3x2
+  // L dan J (4 rotasi)
+  const dasarL = [[0,0],[1,0],[2,0],[2,1]];
+  const dasarJ = [[0,1],[1,1],[2,1],[2,0]];
+  // putar 90° lalu normalisasi ke kiri-atas
+  function rotasi(s){
+    const hasil = s.map(([r,c]) => [c, -r]);
+    const minR = Math.min(...hasil.map(([r])=>r));
+    const minC = Math.min(...hasil.map(([,c])=>c));
+    return hasil.map(([r,c]) => [r-minR, c-minC]);
+  }
+  [dasarL, dasarJ].forEach(bentuk => {
+    let kini = bentuk;
+    for (let i=0;i<4;i++){ BENTUK.push(kini); kini = rotasi(kini); }
+  });
+  // T, S, Z
+  const dasarT = [[0,0],[0,1],[0,2],[1,1]];
+  const dasarS = [[0,1],[0,2],[1,0],[1,1]];
+  const dasarZ = [[0,0],[0,1],[1,1],[1,2]];
+  [dasarT, dasarS, dasarZ].forEach(bentuk => {
+    let kini = bentuk;
+    for (let i=0;i<4;i++){ BENTUK.push(kini); kini = rotasi(kini); }
+  });
+
+  // ── State ────────────────────────────────────────────────────────────────
+  let papan = new Array(N*N).fill(null);   // null atau warna
+  let tray = [];                           // {sel:[[r,c]], warna, dipakai:false}
+  let skor = 0;
+  let terbaik = Number(localStorage.getItem('blokblas-terbaik') || 0);
+  let kombo = 0;
+  let selesai = false;
+  let suaraAktif = localStorage.getItem('blokblas-suara') !== 'mati';
+
+  const elPapan = document.getElementById('papan');
+  const elTray = document.getElementById('tray');
+  const elGhost = document.getElementById('ghost');
+  const elSkor = document.getElementById('skor');
+  const elTerbaik = document.getElementById('terbaik');
+  const elOverlay = document.getElementById('overlay');
+
+  // ── Suara kecil (WebAudio) ───────────────────────────────────────────────
+  let ctx = null;
+  function bunyi(freq, dur = .09, tipe = 'sine', vol = .05){
+    if (!suaraAktif) return;
+    try{
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = tipe; o.frequency.value = freq;
+      g.gain.value = vol;
+      o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime;
+      g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.start(t); o.stop(t + dur);
+    }catch(e){}
+  }
+
+  // ── Papan ────────────────────────────────────────────────────────────────
+  function buatPapan(){
+    elPapan.innerHTML = '';
+    for (let i=0;i<N*N;i++){
+      const sel = document.createElement('div');
+      sel.className = 'sel';
+      sel.dataset.i = i;
+      elPapan.appendChild(sel);
+    }
+  }
+  const selKe = (i) => elPapan.children[i];
+
+  function gambarPapan(){
+    for (let i=0;i<N*N;i++){
+      const sel = selKe(i), w = papan[i];
+      sel.classList.toggle('isi', !!w);
+      sel.classList.remove('bayang','salah');
+      sel.style.background = w || '';
+    }
+  }
+
+  // ── Tray ─────────────────────────────────────────────────────────────────
+  function acakBentuk(){
+    return BENTUK[Math.floor(Math.random()*BENTUK.length)];
+  }
+
+  function isiTray(){
+    tray = [0,1,2].map(() => {
+      const sel = acakBentuk();
+      return { sel, warna: WARNA[Math.floor(Math.random()*WARNA.length)], dipakai:false };
+    });
+  }
+
+  function ukuranPapan(){                       // ukuran 1 sel blok di papan (px)
+    const r0 = selKe(0).getBoundingClientRect();
+    return { s: r0.width, g: r0.height ? (selKe(1).getBoundingClientRect().left - r0.right) : 6 };
+  }
+
+  function gambarTray(){
+    elTray.innerHTML = '';
+    const lebarTray = elTray.clientWidth || 420;
+    const slotW = (lebarTray - 16) / 3;                  // 2 gap @8px
+    const slotH = window.innerWidth < 400 ? 84 : 98;
+    const gapT = 4, pad = 18;
+    tray.forEach((p, idx) => {
+      const slot = document.createElement('div');
+      slot.className = 'slot' + (p.dipakai ? ' kosong' : '');
+      if (!p.dipakai){
+        const piece = document.createElement('div');
+        piece.className = 'piece';
+        piece.dataset.idx = idx;
+        const baris = Math.max(...p.sel.map(([r])=>r)) + 1;
+        const kolom = Math.max(...p.sel.map(([,c])=>c)) + 1;
+        // ukuran sel tray menyesuaikan bentuk, supaya semua blok muat di dalam slot
+        const sTray = Math.max(9, Math.floor(Math.min(
+          26,
+          (slotW - pad - (kolom-1)*gapT) / kolom,
+          (slotH - pad - (baris-1)*gapT) / baris,
+        )));
+        piece.style.gridTemplateColumns = `repeat(${kolom}, ${sTray}px)`;
+        piece.style.gridTemplateRows = `repeat(${baris}, ${sTray}px)`;
+        piece.style.gap = gapT + 'px';
+        piece.style.setProperty('--s', sTray + 'px');
+        piece.style.setProperty('--warna', p.warna);
+        for (let r=0;r<baris;r++){
+          for (let c=0;c<kolom;c++){
+            const ada = p.sel.some(([rr,cc]) => rr===r && cc===c);
+            const b = document.createElement('div');
+            if (ada){ b.className = 'b'; }
+            piece.appendChild(b);
+          }
+        }
+        piece.addEventListener('pointerdown', (e) => mulaiSeret(e, idx, piece));
+        slot.appendChild(piece);
+      }
+      elTray.appendChild(slot);
+    });
+  }
+
+  // ── Seret & taruh ────────────────────────────────────────────────────────
+  let seret = null;    // {idx, piece, sel, warna, ox, oy, baris, kolom, sah}
+
+  function mulaiSeret(e, idx, piece){
+    if (selesai) return;
+    const p = tray[idx];
+    if (!p || p.dipakai) return;
+    e.preventDefault();
+
+    const { s, g } = ukuranPapan();
+    const baris = Math.max(...p.sel.map(([r])=>r)) + 1;
+    const kolom = Math.max(...p.sel.map(([,c])=>c)) + 1;
+
+    // ghost: blok seukuran sel papan
+    elGhost.innerHTML = '';
+    elGhost.hidden = false;
+    elGhost.style.gridTemplateColumns = `repeat(${kolom}, ${s}px)`;
+    elGhost.style.gridTemplateRows = `repeat(${baris}, ${s}px)`;
+    elGhost.style.gap = g + 'px';
+    elGhost.style.setProperty('--s', s + 'px');
+    elGhost.style.setProperty('--warna', p.warna);
+    for (let r=0;r<baris;r++){
+      for (let c=0;c<kolom;c++){
+        const ada = p.sel.some(([rr,cc]) => rr===r && cc===c);
+        const b = document.createElement('div');
+        if (ada) b.className = 'b';
+        elGhost.appendChild(b);
+      }
+    }
+    piece.classList.add('dipakai');
+
+    seret = { idx, piece, sel: p.sel, warna: p.warna, lebar: kolom*s + (kolom-1)*g, tinggi: baris*s + (baris-1)*g, barisP: baris, kolomP: kolom, baris:null, kolom:null, sah:false };
+    geserGhost(e.clientX, e.clientY);
+    window.addEventListener('pointermove', gerakSeret);
+    window.addEventListener('pointerup', lepasSeret);
+    window.addEventListener('pointercancel', batalSeret);
+  }
+
+  function geserGhost(x, y){
+    if (!seret) return;
+    elGhost.style.transform = `translate(${x - seret.lebar/2}px, ${y - seret.tinggi/2}px)`;
+  }
+
+  function gerakSeret(e){
+    if (!seret) return;
+    geserGhost(e.clientX, e.clientY);
+    const { s, g } = ukuranPapan();
+    const r0 = selKe(0).getBoundingClientRect();
+    const kiri = e.clientX - seret.lebar/2;
+    const atas = e.clientY - seret.tinggi/2;
+
+    let kolom = Math.round((kiri - r0.left) / (s + g));
+    let baris = Math.round((atas - r0.top) / (s + g));
+    kolom = Math.max(0, Math.min(N - seret.kolomP, kolom));
+    baris = Math.max(0, Math.min(N - seret.barisP, baris));
+
+    seret.baris = baris; seret.kolom = kolom;
+    seret.sah = bisaTaruh(seret.sel, baris, kolom);
+
+    // hapus bayangan lama
+    [...elPapan.children].forEach(c => c.classList.remove('bayang','salah'));
+    const kelas = seret.sah ? 'bayang' : 'salah';
+    seret.sel.forEach(([r,c]) => {
+      const i = (baris + r)*N + (kolom + c);
+      const sel = selKe(i);
+      if (!sel) return;
+      if (seret.sah){
+        sel.classList.add('bayang');
+        sel.style.background = seret.warna;
+      } else if (!papan[i]) {
+        sel.classList.add('salah');
+      }
+    });
+  }
+
+  function lepasSeret(e){
+    if (!seret) return;
+    const { idx, baris, kolom, sah, sel, warna } = seret;
+    akhiriSeret();
+    if (!sah) { bunyi(180, .08, 'triangle', .03); return; }
+
+    // taruh
+    sel.forEach(([r,c]) => { papan[(baris+r)*N + (kolom+c)] = warna; });
+    tray[idx].dipakai = true;
+
+    const jumlahSel = sel.length;
+    tambahSkor(jumlahSel * 10);
+    bunyi(420 + jumlahSel*20, .08, 'sine', .05);
+
+    // animasi pop
+    sel.forEach(([r,c]) => {
+      const s2 = selKe((baris+r)*N + (kolom+c));
+      s2.classList.add('pop');
+      setTimeout(()=>s2.classList.remove('pop'), 240);
+    });
+
+    gambarPapan();
+    const dibersihkan = bersihkan(e.clientX, e.clientY);
+    gambarTray();
+
+    if (tray.every(p => p.dipakai)) { isiTray(); gambarTray(); }
+    periksaSelesai();
+  }
+
+  function batalSeret(){
+    if (!seret) return;
+    seret.piece.classList.remove('dipakai');
+    akhiriSeret();
+  }
+
+  function akhiriSeret(){
+    window.removeEventListener('pointermove', gerakSeret);
+    window.removeEventListener('pointerup', lepasSeret);
+    window.removeEventListener('pointercancel', batalSeret);
+    [...elPapan.children].forEach(c => { c.classList.remove('bayang','salah'); });
+    elGhost.hidden = true;
+    elGhost.innerHTML = '';
+    if (seret && seret.piece) seret.piece.classList.remove('dipakai');
+    gambarPapan();
+    seret = null;
+  }
+
+  // ── Aturan main ──────────────────────────────────────────────────────────
+  function bisaTaruh(sel, baris, kolom){
+    return sel.every(([r,c]) => {
+      const rr = baris + r, cc = kolom + c;
+      if (rr < 0 || rr >= N || cc < 0 || cc >= N) return false;
+      return papan[rr*N + cc] === null;
+    });
+  }
+
+  function bisaTaruhDiMana(sel){        // cari satu posisi valid (untuk deteksi game over)
+    for (let b=0;b<N;b++) for (let k=0;k<N;k++) if (bisaTaruh(sel,b,k)) return true;
+    return false;
+  }
+
+  function tambahSkor(n){
+    skor += n;
+    elSkor.textContent = skor.toLocaleString('id-ID');
+    elSkor.animate([{transform:'scale(1)'},{transform:'scale(1.14)'},{transform:'scale(1)'}], {duration:220});
+  }
+
+  function terbangSkor(x, y, teks){
+    const el = document.createElement('div');
+    el.className = 'skor-terbang';
+    el.textContent = teks;
+    el.style.left = (x - 16) + 'px';
+    el.style.top = (y - 18) + 'px';
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), 760);
+  }
+
+  function bersihkan(x, y){
+    const penuhBaris = [], penuhKolom = [];
+    for (let r=0;r<N;r++){
+      let penuh = true;
+      for (let c=0;c<N;c++) if (!papan[r*N+c]) { penuh = false; break; }
+      if (penuh) penuhBaris.push(r);
+    }
+    for (let c=0;c<N;c++){
+      let penuh = true;
+      for (let r=0;r<N;r++) if (!papan[r*N+c]) { penuh = false; break; }
+      if (penuh) penuhKolom.push(c);
+    }
+
+    const total = penuhBaris.length + penuhKolom.length;
+    if (!total){ kombo = 0; return 0; }
+
+    kombo += 1;
+    const kena = new Set();
+    penuhBaris.forEach(r => { for (let c=0;c<N;c++) kena.add(r*N+c); });
+    penuhKolom.forEach(c => { for (let r=0;r<N;r++) kena.add(r*N+c); });
+
+    kena.forEach(i => {
+      const sel = selKe(i);
+      sel.classList.add('hapus');
+    });
+
+    const dapat = kena.size * 20 + total * 60 + (kombo - 1) * 50;
+    tambahSkor(dapat);
+    terbangSkor(x || window.innerWidth/2, y || window.innerHeight/2, `+${dapat}`);
+    bunyi(660 + total*90, .16, 'triangle', .06);
+
+    setTimeout(() => {
+      kena.forEach(i => {
+        papan[i] = null;
+        const sel = selKe(i);
+        sel.classList.remove('hapus','isi');
+        sel.style.background = '';
+      });
+    }, 220);
+
+    return total;
+  }
+
+  function periksaSelesai(){
+    const masihAda = tray.some(p => !p.dipakai);
+    if (!masihAda) return;
+    const adaYangMuat = tray.some(p => !p.dipakai && bisaTaruhDiMana(p.sel));
+    if (adaYangMuat) return;
+
+    selesai = true;
+    setTimeout(tampilkanSelesai, 320);
+  }
+
+  function tampilkanSelesai(){
+    document.getElementById('skorAkhir').textContent = skor.toLocaleString('id-ID');
+    if (skor > terbaik){
+      terbaik = skor;
+      localStorage.setItem('blokblas-terbaik', String(terbaik));
+      document.getElementById('pesanRekor').textContent = 'rekor baru!';
+      elTerbaik.textContent = terbaik.toLocaleString('id-ID');
+    } else {
+      document.getElementById('pesanRekor').textContent = `rekor ${terbaik.toLocaleString('id-ID')}`;
+    }
+    elOverlay.hidden = false;
+    bunyi(220, .3, 'sawtooth', .05);
+  }
+
+  function mainLagi(){
+    papan = new Array(N*N).fill(null);
+    skor = 0; kombo = 0; selesai = false;
+    elSkor.textContent = '0';
+    elOverlay.hidden = true;
+    isiTray();
+    gambarPapan();
+    gambarTray();
+    // jaga-jaga: kalau tiga blok pertama tidak muat (sangat jarang), acak ulang
+    let coba = 0;
+    while (coba < 30 && !tray.some(p => bisaTaruhDiMana(p.sel))) { isiTray(); gambarTray(); coba++; }
+  }
+
+  // ── Tombol ───────────────────────────────────────────────────────────────
+  document.getElementById('ulang').addEventListener('click', mainLagi);
+  document.getElementById('mainLagi').addEventListener('click', mainLagi);
+  document.getElementById('suara').addEventListener('click', (e) => {
+    suaraAktif = !suaraAktif;
+    localStorage.setItem('blokblas-suara', suaraAktif ? 'nyala' : 'mati');
+    e.currentTarget.textContent = suaraAktif ? '🔊' : '🔇';
+  });
+  window.addEventListener('resize', () => { gambarTray(); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'r' || e.key === 'R') mainLagi(); });
+
+  // ── Mulai ────────────────────────────────────────────────────────────────
+  buatPapan();
+  elTerbaik.textContent = terbaik.toLocaleString('id-ID');
+  document.getElementById('suara').textContent = suaraAktif ? '🔊' : '🔇';
+  isiTray();
+  gambarTray();
+  // susun ulang ukuran setelah layout stabil
+  requestAnimationFrame(() => { gambarTray(); });
+  setTimeout(() => gambarTray(), 120);
+})();
+</script>
+</body>
+</html>
