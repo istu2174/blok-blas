@@ -6,9 +6,14 @@
 <meta name="theme-color" content="#7ec8ff" />
 <title>Blok Blas</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='13' height='13' rx='4' fill='%23ffd43b'/><rect x='17' y='2' width='13' height='13' rx='4' fill='%23f4508a'/><rect x='2' y='17' width='13' height='13' rx='4' fill='%233b82f6'/><rect x='17' y='17' width='13' height='13' rx='4' fill='%2337b24d'/></svg>" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&display=swap" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
   :root{
     --gap:5px;              /* jarak antar sel papan (px) */
@@ -177,6 +182,24 @@
   }
   .tombol:active{transform:translateY(3px);box-shadow:0 2px 0 #d9a300}
 
+  .tombol.kedua{background:rgba(255,255,255,.14);color:#fff;box-shadow:none;font-size:14px;padding:12px}
+  .grup{display:flex;flex-direction:column;gap:10px}
+
+  /* ── akun & skill ─────────────────────────────────────────── */
+  .user{
+    flex:1;min-width:0;text-align:center;font-weight:800;color:#0f2c5c;font-size:12px;
+    background:rgba(255,255,255,.22);padding:6px 10px;border-radius:12px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+  }
+  .tray.batal{background:rgba(255,255,255,.36);box-shadow:inset 0 0 0 2px rgba(255,255,255,.85)}
+  .kartu input{
+    display:block;width:100%;margin-bottom:10px;padding:12px 14px;border:0;border-radius:12px;
+    font:inherit;font-size:16px;font-weight:600;color:#0b2a55;background:#eaf4ff;
+    user-select:text;touch-action:auto
+  }
+  .kartu input:focus{outline:3px solid #ffd43b}
+  .galat{color:#ffb3c1;font-size:12px;font-weight:700;min-height:18px;margin-bottom:8px}
+
   .petunjuk{text-align:center;color:#0f2c5c;opacity:.6;font-size:11px;font-weight:600}
 
   @media (max-width:390px){
@@ -194,9 +217,11 @@
 <div class="app">
   <div class="atas">
     <div class="brand">BLOK <b>BLAS</b></div>
+    <div class="user" id="infoUser"></div>
     <div class="aksi">
       <button class="ikon" id="suara" title="Suara" aria-label="Suara">🔊</button>
       <button class="ikon" id="ulang" title="Main ulang (R)" aria-label="Main ulang">↻</button>
+      <button class="ikon" id="keluar" title="Keluar" aria-label="Keluar">🚪</button>
     </div>
   </div>
 
@@ -207,7 +232,7 @@
 
   <div class="papan" id="papan"></div>
   <div class="tray" id="tray"></div>
-  <div class="petunjuk">Tarik blok ke papan. Penuhi baris atau kolom untuk menghapusnya.</div>
+  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya.</div>
 </div>
 
 <div id="ghost" hidden></div>
@@ -215,11 +240,30 @@
 <div class="overlay" id="overlay" hidden>
   <div class="kartu">
     <h2>Tidak ada yang muat</h2>
-    <div class="sub">Papan penuh, coba lagi ya</div>
+    <div class="sub" id="subAkhir">Papan penuh, coba lagi ya</div>
     <div class="angka" id="skorAkhir">0</div>
     <div class="rekor" id="pesanRekor">skor akhir</div>
-    <button class="tombol" id="mainLagi">MAIN LAGI</button>
+    <div class="grup">
+      <button class="tombol" id="pakaiSkill">🧹 KOSONGKAN PAPAN</button>
+      <button class="tombol" id="mainLagi">MAIN LAGI</button>
+    </div>
   </div>
+</div>
+
+<div class="overlay" id="login" hidden>
+  <form class="kartu" id="formLogin">
+    <h2>BLOK <b style="color:#ffd43b">BLAS</b></h2>
+    <div class="sub">Masuk atau daftar dulu buat mulai main</div>
+    <input id="nama" name="username" placeholder="Nama pemain" aria-label="Nama pemain"
+           autocomplete="username" autocapitalize="none" maxlength="20" required />
+    <input id="sandi" name="password" type="password" placeholder="Kata sandi (min. 6)" aria-label="Kata sandi"
+           autocomplete="current-password" required />
+    <div class="galat" id="galat" role="alert"></div>
+    <div class="grup">
+      <button class="tombol" type="submit" value="masuk">MASUK</button>
+      <button class="tombol kedua" type="submit" value="daftar">DAFTAR AKUN BARU</button>
+    </div>
+  </form>
 </div>
 
 <script>
@@ -271,7 +315,7 @@
   let papan = new Array(N*N).fill(null);
   let tray = [];
   let skor = 0;
-  let terbaik = Number(baca('blokblas-terbaik')) || 0;
+  let terbaik = 0;          // per akun, diisi saat masuk()
   let rekorAwal = terbaik;  // rekor saat ronde dimulai, buat deteksi "rekor baru"
   let kombo = 0;
   let selesai = false;
@@ -439,10 +483,19 @@
 
     const geo = ukuranPapan();
     const { kiri, atas } = posisiGhost(e.clientX, e.clientY);
-    let kolom = Math.round((kiri - geo.kiri) / geo.step);
-    let baris = Math.round((atas - geo.atas) / geo.step);
-    kolom = Math.max(0, Math.min(N - seret.kolomP, kolom));
-    baris = Math.max(0, Math.min(N - seret.barisP, baris));
+    const k0 = Math.round((kiri - geo.kiri) / geo.step);
+    const b0 = Math.round((atas - geo.atas) / geo.step);
+    const kolom = Math.max(0, Math.min(N - seret.kolomP, k0));
+    const baris = Math.max(0, Math.min(N - seret.barisP, b0));
+
+    // kursor/jari balik ke tray = batal; ghost jauh di luar papan = nggak di-snap
+    seret.batal = e.clientY >= elTray.getBoundingClientRect().top;
+    elTray.classList.toggle('batal', seret.batal);
+    if (seret.batal || Math.abs(kolom - k0) > 1 || Math.abs(baris - b0) > 1){
+      seret.sah = false;
+      bersihkanBayangan();
+      return;
+    }
 
     seret.baris = baris;
     seret.kolom = kolom;
@@ -488,10 +541,10 @@
 
   function lepasSeret(e){
     if (!seret) return;
-    const { idx, baris, kolom, sah, sel, warna } = seret;
+    const { idx, baris, kolom, sah, sel, warna, batal } = seret;
     const x = e.clientX, y = e.clientY;
     akhiriSeret();
-    if (!sah){ bunyi(150, .07, 'square', .03); return; }
+    if (!sah){ if (!batal) bunyi(150, .07, 'square', .03); return; }
 
     sel.forEach(([r,c]) => { papan[(baris+r)*N + (kolom+c)] = warna; });
     tray[idx].dipakai = true;
@@ -516,6 +569,7 @@
     window.removeEventListener('pointerup', lepasSeret);
     window.removeEventListener('pointercancel', batalSeret);
     bersihkanBayangan();
+    elTray.classList.remove('batal');
     elGhost.hidden = true;
     elGhost.innerHTML = '';
     if (seret){
@@ -602,7 +656,7 @@
     if (skor > terbaik){
       terbaik = skor;
       elTerbaik.textContent = angka(terbaik);
-      tulis('blokblas-terbaik', String(terbaik));
+      simpanRekor();
     }
     // sekali per ronde, saat pertama kali melewati rekor lama
     if (rekorAwal > 0 && sebelum <= rekorAwal && skor > rekorAwal){
@@ -630,21 +684,52 @@
     const r = ronde;
     setTimeout(() => {
       if (r !== ronde) return;
+      const bisa = bisaSkill();
       document.getElementById('skorAkhir').textContent = angka(skor);
       document.getElementById('pesanRekor').textContent = skor > rekorAwal
         ? '🎉 rekor baru!' : `rekor ${angka(terbaik)}`;
+      document.getElementById('subAkhir').textContent = bisa
+        ? 'Pakai skill buat kosongin papan, skor tetap lanjut'
+        : 'Kesempatan skill habis, mulai lagi dari 0';
+      elPakaiSkill.hidden = !bisa;
+      elPakaiSkill.textContent = `🧹 KOSONGKAN PAPAN (${user.admin ? '∞' : 'sisa ' + sisaSkill})`;
+      elMainLagi.classList.toggle('kedua', bisa);
       elOverlay.hidden = false;
-      document.getElementById('mainLagi').focus();
+      (bisa ? elPakaiSkill : elMainLagi).focus();
       bunyi(200, .32, 'sawtooth', .05);
       getar([30, 60, 30]);
     }, 360);
   }
 
+  // ── Skill kosongkan papan ──────────────────────────────────────────────────
+  const bisaSkill = () => !!user && (user.admin || sisaSkill > 0);
+
+  function pakaiSkill(){
+    if (!selesai || sibuk || !bisaSkill()) return;
+    if (!user.admin) sisaSkill--;
+    tampilUser();
+    elOverlay.hidden = true;
+    sibuk = true;
+    papan.forEach((w, i) => { if (w) selKe(i).classList.add('ledak'); });
+    bunyi(700, .2, 'triangle', .06);
+    getar(30);
+    const r = ronde;
+    setTimeout(() => {
+      if (r !== ronde) return;
+      papan.fill(null);
+      gambarPapan();
+      sibuk = false; selesai = false; kombo = 0;  // tray tetap, pasti muat di papan kosong
+    }, 300);
+  }
+
   function mainLagi(){
+    if (!user) return;
     akhiriSeret();
     ronde++;
     papan = new Array(N*N).fill(null);
     skor = 0; kombo = 0; selesai = false; sibuk = false; rekorAwal = terbaik;
+    sisaSkill = KESEMPATAN;
+    tampilUser();
     elSkor.textContent = '0';
     elOverlay.hidden = true;
     gambarPapan();
@@ -652,9 +737,144 @@
     gambarTray(true);
   }
 
+  // ── Akun (Supabase) ────────────────────────────────────────────────────────
+  // Login & rekor disimpan di Supabase. Status admin diatur di tabel profiles (supabase/schema.sql)
+  // dan klien cuma bisa membacanya.
+  // shortcut: logika game & skill tetap jalan di browser, jadi skor masih bisa dicurangi lewat
+  // devtools; pindahkan validasi ke server kalau nanti butuh papan skor yang adil.
+  const SUPABASE_URL = 'https://liekfjxugwlbvxfvgtcr.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_OGoihRkAZOvXInCLSDmHOQ_44CJGosp';  // publishable: memang untuk klien publik
+  const DOMAIN_EMAIL = '@blokblas.app';  // login pakai nama; Supabase butuh email, jadi nama@domain ini
+  const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+  const KESEMPATAN = 3;
+  let user = null;            // { nama, admin }
+  let sisaSkill = KESEMPATAN;
+  let timerRekor = 0;
+
+  const elLogin = document.getElementById('login');
+  const elNama = document.getElementById('nama');
+  const elSandi = document.getElementById('sandi');
+  const elGalat = document.getElementById('galat');
+  const elInfoUser = document.getElementById('infoUser');
+  const elPakaiSkill = document.getElementById('pakaiSkill');
+  const elMainLagi = document.getElementById('mainLagi');
+
+  // Profil terakhir disimpan di HP ini juga, biar tetap bisa main (dan rekor nggak hilang) saat offline.
+  const profilLokal = (nama) => {
+    try { const p = JSON.parse(baca('blokblas-profil')); return p && p.username === nama ? p : null; }
+    catch(e){ return null; }
+  };
+
+  async function muatProfil(akun){
+    const nama = akun.user_metadata && akun.user_metadata.username;
+    const lokal = profilLokal(nama);
+    const { data, error } = await db.from('profiles')
+      .select('username,is_admin,best_score').eq('id', akun.id).maybeSingle();
+    if (error || !data) return lokal;
+    // rekor yang dicetak saat offline lebih tinggi? kirim ke server
+    if (lokal && lokal.best_score > data.best_score) data.best_score = lokal.best_score;
+    tulis('blokblas-profil', JSON.stringify(data));
+    return data;
+  }
+
+  function simpanRekor(){
+    tulis('blokblas-profil', JSON.stringify({ username: user.nama, is_admin: user.admin, best_score: terbaik }));
+    clearTimeout(timerRekor);
+    timerRekor = setTimeout(kirimRekor, 1500);  // dikumpulin, biar nggak nembak server tiap naruh blok
+  }
+
+  async function kirimRekor(){
+    clearTimeout(timerRekor);
+    timerRekor = 0;
+    if (!db || !user) return;
+    try { await db.rpc('submit_score', { skor: terbaik }); } catch(e){}  // gagal? tersimpan lokal, dikirim lagi saat login
+  }
+
+  function pesanGalat(err){
+    const m = (err && err.message) || '';
+    if (/invalid login/i.test(m)) return 'Nama atau kata sandi salah';
+    if (/already registered/i.test(m)) return 'Nama sudah dipakai, pilih yang lain';
+    if (/fetch|network/i.test(m)) return 'Nggak bisa terhubung ke server, cek internet';
+    if (/password/i.test(m)) return 'Kata sandi minimal 6 karakter';
+    return m || 'Terjadi kesalahan, coba lagi';
+  }
+
+  function tampilUser(){
+    if (!user) { elInfoUser.textContent = ''; return; }
+    elInfoUser.textContent = `${user.admin ? '👑' : '👤'} ${user.nama} · 🧹 ${user.admin ? '∞' : sisaSkill}`;
+    elInfoUser.title = user.admin ? 'Admin: skill kosongkan papan tanpa batas' : `Sisa skill kosongkan papan: ${sisaSkill}`;
+  }
+
+  function masuk(p){
+    user = { nama: p.username, admin: !!p.is_admin };
+    elLogin.hidden = true;
+    elGalat.textContent = '';
+    elSandi.value = '';
+    terbaik = p.best_score || 0;
+    elTerbaik.textContent = angka(terbaik);
+    kirimRekor();  // sinkronkan rekor offline (kalau ada)
+    mainLagi();
+  }
+
+  function tampilLogin(){
+    akhiriSeret();
+    ronde++;
+    user = null;
+    tampilUser();
+    elOverlay.hidden = true;
+    elLogin.hidden = false;
+    elNama.focus();
+  }
+
+  async function keluar(){
+    if (timerRekor) await kirimRekor();
+    tampilLogin();
+    if (db) db.auth.signOut().catch(() => {});
+  }
+
+  let sedangLogin = false;
+  document.getElementById('formLogin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (sedangLogin) return;
+    const daftar = e.submitter && e.submitter.value === 'daftar';
+    const nama = elNama.value.trim().toLowerCase();
+    const sandi = elSandi.value;
+    const galat = (t) => { elGalat.textContent = t; };
+
+    if (!db) return galat('Gagal memuat server, cek internet lalu muat ulang');
+    if (!/^[a-z0-9_]{3,20}$/.test(nama)) return galat('Nama 3–20 karakter: huruf, angka, atau _');
+    if (sandi.length < 6) return galat('Kata sandi minimal 6 karakter');
+
+    sedangLogin = true;
+    galat('Sebentar…');
+    try {
+      const email = nama + DOMAIN_EMAIL;
+      let hasil;
+      if (daftar){
+        const { data: ada } = await db.from('profiles').select('id').eq('username', nama).maybeSingle();
+        if (ada) return galat('Nama sudah dipakai, pilih yang lain');
+        hasil = await db.auth.signUp({ email, password: sandi, options: { data: { username: nama } } });
+      } else {
+        hasil = await db.auth.signInWithPassword({ email, password: sandi });
+      }
+      if (hasil.error) return galat(pesanGalat(hasil.error));
+      if (!hasil.data.session) return galat('Admin: matikan "Confirm email" di Supabase dulu');
+      const p = await muatProfil(hasil.data.user);
+      if (!p) return galat('Profil nggak ketemu, coba lagi');
+      masuk(p);
+    } catch(err){
+      galat(pesanGalat(err));
+    } finally {
+      sedangLogin = false;
+    }
+  });
+
   // ── Tombol ─────────────────────────────────────────────────────────────────
   document.getElementById('ulang').addEventListener('click', mainLagi);
-  document.getElementById('mainLagi').addEventListener('click', mainLagi);
+  elMainLagi.addEventListener('click', mainLagi);
+  elPakaiSkill.addEventListener('click', pakaiSkill);
+  document.getElementById('keluar').addEventListener('click', keluar);
   const elSuara = document.getElementById('suara');
   const tampilSuara = () => {
     elSuara.textContent = suaraAktif ? '🔊' : '🔇';
@@ -667,6 +887,7 @@
     if (suaraAktif) bunyi(520, .08, 'sine', .05);
   });
   window.addEventListener('keydown', (e) => {
+    if (e.target.closest('input')) return;  // jangan restart pas lagi ngetik nama
     if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey) mainLagi();
   });
   window.addEventListener('contextmenu', (e) => {
@@ -675,9 +896,21 @@
 
   // ── Mulai ──────────────────────────────────────────────────────────────────
   buatPapan();
-  elTerbaik.textContent = angka(terbaik);
   tampilSuara();
-  mainLagi();
+  (async () => {
+    // lanjutkan sesi Supabase yang tersimpan, kalau nggak ada tampilkan login
+    try {
+      const { data } = db ? await db.auth.getSession() : { data: {} };
+      const p = data.session && await muatProfil(data.session.user);
+      if (p) return masuk(p);
+    } catch(e){}
+    tampilLogin();
+  })();
+  window.addEventListener('pagehide', () => { if (timerRekor) kirimRekor(); });
+
+  if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 
   // gambar ulang tray hanya kalau ukurannya benar-benar berubah (rotasi, resize)
   let ukuranTray = `${elTray.clientWidth}x${elTray.clientHeight}`;
