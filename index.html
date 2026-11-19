@@ -90,6 +90,10 @@
     box-shadow:inset 0 2px 3px rgba(0,0,0,.28), inset 0 -1px 0 rgba(255,255,255,.06);
     transition:background .12s ease, box-shadow .12s ease, transform .12s ease;
   }
+  /* selama seret, preview ganti instan: transisi box-shadow = gambar ulang belasan sel tiap frame */
+  .papan.seret .sel{
+    transition:none;
+  }
   .sel.isi{box-shadow:inset 0 3px 0 rgba(255,255,255,.32), inset 0 -4px 0 rgba(0,0,0,.22), 0 2px 4px rgba(0,0,0,.22)}
   .sel.isi::after{
     content:"";position:absolute;inset:14% 14% 54% 14%;border-radius:45%;
@@ -138,8 +142,12 @@
 
   #ghost{
     position:fixed;left:0;top:0;z-index:60;pointer-events:none;display:grid;
-    filter:drop-shadow(0 12px 14px rgba(9,30,60,.42));
     will-change:transform
+  }
+  /* bayangan dipasang di tiap blok (digambar sekali), bukan filter drop-shadow di ghost:
+     filter dihitung ulang GPU tiap frame selama ghost gerak dan bikin patah-patah di HP */
+  #ghost .b{
+    box-shadow:inset 0 3px 0 rgba(255,255,255,.42), inset 0 -4px 0 rgba(0,0,0,.2), 0 10px 14px rgba(9,30,60,.38)
   }
 
   /* ── teks melayang ────────────────────────────────────────── */
@@ -232,7 +240,7 @@
 
   <div class="papan" id="papan"></div>
   <div class="tray" id="tray"></div>
-  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya.</div>
+  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya. · v4</div>
 </div>
 
 <div id="ghost" hidden></div>
@@ -253,7 +261,7 @@
 <div class="overlay" id="login" hidden>
   <form class="kartu" id="formLogin">
     <h2>BLOK <b style="color:#ffd43b">BLAS</b></h2>
-    <div class="sub">Masuk atau daftar dulu buat mulai main</div>
+    <div class="sub">Masuk atau daftar dulu buat mulai main · v4</div>
     <input id="nama" name="username" placeholder="Nama pemain" aria-label="Nama pemain"
            autocomplete="username" autocapitalize="none" maxlength="20" required />
     <input id="sandi" name="password" type="password" placeholder="Kata sandi (min. 6)" aria-label="Kata sandi"
@@ -491,6 +499,7 @@
 
     piece.classList.add('diseret');
     piece.parentElement.classList.add('diseret');
+    elPapan.classList.add('seret');
 
     seret = {
       idx, piece, sel: p.sel, warna: p.warna,
@@ -541,8 +550,9 @@
     const kolom = Math.max(0, Math.min(N - seret.kolomP, k0));
     const baris = Math.max(0, Math.min(N - seret.barisP, b0));
 
-    // kursor/jari balik ke tray = batal; ghost jauh di luar papan = nggak di-snap
-    const batal = y >= seret.batasTray;
+    // batal kalau tengah BLOK (bukan jari) masuk ke tray: di HP blok diangkat di atas jari,
+    // jadi saat naruh di baris paling bawah jarinya sudah di area tray
+    const batal = atas + seret.tinggi / 2 >= seret.batasTray;
     const lepas = batal || Math.abs(kolom - k0) > 1 || Math.abs(baris - b0) > 1;
     const sah = !lepas && bisaTaruh(seret.sel, baris, kolom);
 
@@ -551,7 +561,7 @@
     if (kunci === seret.kunci) return;
     seret.kunci = kunci;
 
-    if (batal !== seret.batal) elTray.classList.toggle('batal', batal);
+    elTray.classList.toggle('batal', batal);
     Object.assign(seret, { batal, sah, baris, kolom });
     if (lepas) return bersihkanBayangan();
     tampilkanBayangan();
@@ -629,6 +639,7 @@
     window.removeEventListener('pointerup', lepasSeret);
     window.removeEventListener('pointercancel', batalSeret);
     bersihkanBayangan();
+    elPapan.classList.remove('seret');
     elTray.classList.remove('batal');
     elGhost.hidden = true;
     elGhost.innerHTML = '';

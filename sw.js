@@ -1,6 +1,6 @@
 // Service worker Blok Blas: network-first biar update langsung kepakai,
 // fallback ke cache biar tetap bisa dimainin offline.
-const CACHE = 'blokblas-v1';
+const CACHE = 'blokblas-v2';
 const AWAL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -17,8 +17,11 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // file game sendiri: selalu tanya server (no-cache), karena GitHub Pages bikin browser
+  // nyimpen cache 10 menit dan HP jadi masih jalanin versi lama setelah update
+  const milikSendiri = new URL(e.request.url).origin === self.location.origin;
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, milikSendiri ? { cache: 'no-cache' } : undefined)
       .then((res) => {
         if (res.ok || res.type === 'opaque') {
           const salinan = res.clone();
