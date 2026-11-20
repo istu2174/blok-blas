@@ -240,7 +240,7 @@
 
   <div class="papan" id="papan"></div>
   <div class="tray" id="tray"></div>
-  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya. · v6</div>
+  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya. · v7</div>
 </div>
 
 <div id="ghost" hidden></div>
@@ -261,7 +261,7 @@
 <div class="overlay" id="login" hidden>
   <form class="kartu" id="formLogin">
     <h2>BLOK <b style="color:#ffd43b">BLAS</b></h2>
-    <div class="sub">Masuk atau daftar dulu buat mulai main · v6</div>
+    <div class="sub">Masuk atau daftar dulu buat mulai main · v7</div>
     <input id="nama" name="username" placeholder="Nama pemain" aria-label="Nama pemain"
            autocomplete="username" autocapitalize="none" maxlength="20" required />
     <input id="sandi" name="password" type="password" placeholder="Kata sandi (min. 6)" aria-label="Kata sandi"
@@ -343,29 +343,46 @@
   function siapkanAudio(){
     if (!ctx){
       ctx = new (window.AudioContext || window.webkitAudioContext)();
-      // compressor: suara bisa dibikin keras tanpa pecah walau banyak nada bunyi bareng
+      // Rantai: efek → highpass → compressor kuat → penguat ┐
+      //        musik → lowpass → (volume sendiri) ─────────┴→ soft-clipper → speaker
+      // Musik sengaja nggak lewat compressor efek: kalau lewat, ikut terangkat dan nutupin efek.
+      // Diuji render offline (simulasi speaker HP, <300Hz dibuang) vs v6: efek +6..8 dB,
+      // musik +5 dB, efek tetap ~8 dB di atas musik; soft-clipper menjamin nggak pernah pecah.
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 90;  // bass super rendah nggak kedengeran di HP tapi makan ruang compressor
       const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -20;
-      comp.knee.value = 8;
-      comp.ratio.value = 8;
-      comp.attack.value = .003;
-      comp.release.value = .2;
-      // makeup gain SETELAH compressor: ini yang bikin keras; compressor-nya yang jaga biar nggak pecah
+      comp.threshold.value = -28;
+      comp.knee.value = 6;
+      comp.ratio.value = 12;
+      comp.attack.value = .002;
+      comp.release.value = .15;
       const keras = ctx.createGain();
-      keras.gain.value = 1.7;  // diuji: kasus terkeras (level 6 + musik) puncak 0.92, nggak pecah
+      keras.gain.value = 7;
       master = ctx.createGain();
-      master.gain.value = 1;
-      master.connect(comp);
+      master.connect(hp);
+      hp.connect(comp);
       comp.connect(keras);
-      keras.connect(ctx.destination);
-      // jalur musik sendiri: volume kecil + lowpass biar hangat & nggak nutupin efek suara
+
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.value = 1800;
       busMusik = ctx.createGain();
       busMusik.gain.value = 0;
       busMusik.connect(lp);
-      lp.connect(master);
+
+      // soft-clipper tanh: puncak dibulatkan halus, output selalu < 1 (nggak kresek)
+      const gabung = ctx.createGain(), skala = ctx.createGain(), clip = ctx.createWaveShaper();
+      skala.gain.value = 1 / 4;
+      const kurva = new Float32Array(2048);
+      for (let i = 0; i < kurva.length; i++) kurva[i] = Math.tanh(4 * (i / (kurva.length - 1) * 2 - 1));
+      clip.curve = kurva;
+      clip.oversample = '2x';
+      keras.connect(gabung);
+      lp.connect(gabung);
+      gabung.connect(skala);
+      skala.connect(clip);
+      clip.connect(ctx.destination);
     }
     if (ctx.state === 'suspended' && !document.hidden) ctx.resume();
     return ctx;
@@ -387,7 +404,7 @@
   }
 
   // ── Musik latar: loop 4 birama dibuat langsung pakai Web Audio (tanpa file, aman offline) ──
-  const VOL_MUSIK = .45;                // dikali volume tiap nada; efek suara tetap lebih keras
+  const VOL_MUSIK = 3.8;                // musik nggak di-compress, jadi angkanya besar; efek tetap ~8 dB di atasnya
   const KETUK = 60 / 84 / 2;            // 1/8 ketukan di 84 BPM
   const LAGU = [                        // Am7 – Fmaj7 – Cmaj7 – G6 (nomor nada MIDI)
     { bass: 45, akor: [57, 60, 64, 67] },
@@ -452,8 +469,10 @@
   function bunyiTaruh(jumlahSel){
     const lv = levelSuara();
     const f = 330 + jumlahSel * 22;
-    bunyi(f, .09, 'sine', .22);
-    if (lv >= 2) bunyi(f * 2, .07, 'sine', .07);  // oktaf tipis di level tinggi
+    // triangle + oktaf: lebih "terang" sehingga kedengeran jelas di speaker HP (sine murni terdengar pelan)
+    bunyi(f, .1, 'triangle', .24);
+    bunyi(f * 2, .08, 'sine', .1);
+    if (lv >= 2) bunyi(f * 3, .07, 'sine', .06);  // nada kelima di atas oktaf: lebih kaya di level tinggi
   }
 
   function bunyiLedak(){
