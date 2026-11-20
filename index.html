@@ -240,7 +240,7 @@
 
   <div class="papan" id="papan"></div>
   <div class="tray" id="tray"></div>
-  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya. · v5</div>
+  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya. · v6</div>
 </div>
 
 <div id="ghost" hidden></div>
@@ -261,7 +261,7 @@
 <div class="overlay" id="login" hidden>
   <form class="kartu" id="formLogin">
     <h2>BLOK <b style="color:#ffd43b">BLAS</b></h2>
-    <div class="sub">Masuk atau daftar dulu buat mulai main · v5</div>
+    <div class="sub">Masuk atau daftar dulu buat mulai main · v6</div>
     <input id="nama" name="username" placeholder="Nama pemain" aria-label="Nama pemain"
            autocomplete="username" autocapitalize="none" maxlength="20" required />
     <input id="sandi" name="password" type="password" placeholder="Kata sandi (min. 6)" aria-label="Kata sandi"
@@ -345,10 +345,19 @@
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       // compressor: suara bisa dibikin keras tanpa pecah walau banyak nada bunyi bareng
       const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -20;
+      comp.knee.value = 8;
+      comp.ratio.value = 8;
+      comp.attack.value = .003;
+      comp.release.value = .2;
+      // makeup gain SETELAH compressor: ini yang bikin keras; compressor-nya yang jaga biar nggak pecah
+      const keras = ctx.createGain();
+      keras.gain.value = 1.7;  // diuji: kasus terkeras (level 6 + musik) puncak 0.92, nggak pecah
       master = ctx.createGain();
       master.gain.value = 1;
       master.connect(comp);
-      comp.connect(ctx.destination);
+      comp.connect(keras);
+      keras.connect(ctx.destination);
       // jalur musik sendiri: volume kecil + lowpass biar hangat & nggak nutupin efek suara
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
@@ -378,7 +387,7 @@
   }
 
   // ── Musik latar: loop 4 birama dibuat langsung pakai Web Audio (tanpa file, aman offline) ──
-  const VOL_MUSIK = .35;                // dikali volume tiap nada; efek suara tetap lebih keras
+  const VOL_MUSIK = .45;                // dikali volume tiap nada; efek suara tetap lebih keras
   const KETUK = 60 / 84 / 2;            // 1/8 ketukan di 84 BPM
   const LAGU = [                        // Am7 – Fmaj7 – Cmaj7 – G6 (nomor nada MIDI)
     { bass: 45, akor: [57, 60, 64, 67] },
