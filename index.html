@@ -240,7 +240,7 @@
 
   <div class="papan" id="papan"></div>
   <div class="tray" id="tray"></div>
-  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya. · v4</div>
+  <div class="petunjuk">Tarik blok ke papan. Balikin ke bawah buat batal. Penuhi baris/kolom untuk menghapusnya. · v5</div>
 </div>
 
 <div id="ghost" hidden></div>
@@ -261,7 +261,7 @@
 <div class="overlay" id="login" hidden>
   <form class="kartu" id="formLogin">
     <h2>BLOK <b style="color:#ffd43b">BLAS</b></h2>
-    <div class="sub">Masuk atau daftar dulu buat mulai main · v4</div>
+    <div class="sub">Masuk atau daftar dulu buat mulai main · v5</div>
     <input id="nama" name="username" placeholder="Nama pemain" aria-label="Nama pemain"
            autocomplete="username" autocapitalize="none" maxlength="20" required />
     <input id="sandi" name="password" type="password" placeholder="Kata sandi (min. 6)" aria-label="Kata sandi"
@@ -339,20 +339,33 @@
   const elOverlay = document.getElementById('overlay');
 
   // ── Suara ──────────────────────────────────────────────────────────────────
-  let ctx = null, master = null;
+  let ctx = null, master = null, busMusik = null;
+  function siapkanAudio(){
+    if (!ctx){
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // compressor: suara bisa dibikin keras tanpa pecah walau banyak nada bunyi bareng
+      const comp = ctx.createDynamicsCompressor();
+      master = ctx.createGain();
+      master.gain.value = 1;
+      master.connect(comp);
+      comp.connect(ctx.destination);
+      // jalur musik sendiri: volume kecil + lowpass biar hangat & nggak nutupin efek suara
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 1800;
+      busMusik = ctx.createGain();
+      busMusik.gain.value = 0;
+      busMusik.connect(lp);
+      lp.connect(master);
+    }
+    if (ctx.state === 'suspended' && !document.hidden) ctx.resume();
+    return ctx;
+  }
+
   function bunyi(freq, dur = .09, tipe = 'sine', vol = .15, tunda = 0){
     if (!suaraAktif) return;
     try{
-      if (!ctx){
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-        // compressor: suara bisa dibikin keras tanpa pecah walau banyak nada bunyi bareng
-        const comp = ctx.createDynamicsCompressor();
-        master = ctx.createGain();
-        master.gain.value = 1;
-        master.connect(comp);
-        comp.connect(ctx.destination);
-      }
-      if (ctx.state === 'suspended') ctx.resume();
+      siapkanAudio();
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.type = tipe; o.frequency.value = freq;
       const t = ctx.currentTime + tunda;
@@ -362,6 +375,63 @@
       o.connect(g); g.connect(master);
       o.start(t); o.stop(t + dur + .02);
     }catch(e){}
+  }
+
+  // ── Musik latar: loop 4 birama dibuat langsung pakai Web Audio (tanpa file, aman offline) ──
+  const VOL_MUSIK = .35;                // dikali volume tiap nada; efek suara tetap lebih keras
+  const KETUK = 60 / 84 / 2;            // 1/8 ketukan di 84 BPM
+  const LAGU = [                        // Am7 – Fmaj7 – Cmaj7 – G6 (nomor nada MIDI)
+    { bass: 45, akor: [57, 60, 64, 67] },
+    { bass: 41, akor: [53, 57, 60, 64] },
+    { bass: 48, akor: [55, 59, 60, 64] },
+    { bass: 43, akor: [55, 59, 62, 64] },
+  ];
+  const ARP = [0, 1, 2, 3, 2, 1, 2, 3];  // urutan nada akor untuk arpeggio per 1/8
+  const hz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  let musikJalan = false, ketukKe = 0, waktuKetuk = 0, timerMusik = 0;
+
+  function nadaMusik(f, t, dur, tipe, vol, attack){
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = tipe; o.frequency.value = f;
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(busMusik);
+    o.start(t); o.stop(t + dur + .05);
+  }
+
+  // dijadwalkan sedikit di depan (lookahead) biar tempo tetap rapi walau main thread sibuk
+  function jadwalMusik(){
+    if (!musikJalan) return;
+    if (waktuKetuk < ctx.currentTime) waktuKetuk = ctx.currentTime + .05;  // habis tertunda, jangan numpuk nada
+    while (waktuKetuk < ctx.currentTime + .3){
+      const { bass, akor } = LAGU[Math.floor(ketukKe / 8) % LAGU.length];
+      const k = ketukKe % 8, t = waktuKetuk;
+      if (k === 0){
+        akor.forEach(m => nadaMusik(hz(m), t, KETUK * 8, 'sine', .05, .4));  // pad
+        nadaMusik(hz(bass), t, KETUK * 3.5, 'triangle', .16, .02);
+      }
+      if (k === 4) nadaMusik(hz(bass), t, KETUK * 3.5, 'triangle', .12, .02);
+      nadaMusik(hz(akor[ARP[k]] + 12), t, KETUK * 1.6, 'triangle', .05, .005);  // arpeggio
+      ketukKe++;
+      waktuKetuk += KETUK;
+    }
+  }
+
+  function mulaiMusik(){
+    if (musikJalan || !suaraAktif) return;
+    try { siapkanAudio(); } catch(e){ return; }
+    musikJalan = true;
+    waktuKetuk = ctx.currentTime + .1;
+    busMusik.gain.setTargetAtTime(VOL_MUSIK, ctx.currentTime, .6);  // fade in
+    jadwalMusik();
+    timerMusik = setInterval(jadwalMusik, 100);
+  }
+
+  function hentikanMusik(){
+    musikJalan = false;
+    clearInterval(timerMusik);
+    if (busMusik) busMusik.gain.setTargetAtTime(0, ctx.currentTime, .08);
   }
 
   // Level suara naik sesuai skor ronde ini: makin tinggi, makin banyak nada, ada bass & kilau.
@@ -961,7 +1031,16 @@
     suaraAktif = !suaraAktif;
     tulis('blokblas-suara', suaraAktif ? 'nyala' : 'mati');
     tampilSuara();
-    if (suaraAktif) bunyi(520, .1, 'sine', .2);
+    if (suaraAktif){ bunyi(520, .1, 'sine', .2); mulaiMusik(); }
+    else hentikanMusik();
+  });
+  // browser cuma ngizinin audio setelah ada sentuhan/ketikan pertama
+  window.addEventListener('pointerdown', mulaiMusik);
+  window.addEventListener('keydown', mulaiMusik);
+  // aplikasi di-minimize / pindah tab: diam, hemat baterai
+  document.addEventListener('visibilitychange', () => {
+    if (!ctx) return;
+    if (document.hidden) ctx.suspend(); else if (suaraAktif) ctx.resume();
   });
   window.addEventListener('keydown', (e) => {
     if (e.target.closest('input')) return;  // jangan restart pas lagi ngetik nama

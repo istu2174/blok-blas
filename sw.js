@@ -1,6 +1,6 @@
 // Service worker Blok Blas: network-first biar update langsung kepakai,
 // fallback ke cache biar tetap bisa dimainin offline.
-const CACHE = 'blokblas-v2';
+const CACHE = 'blokblas-v3';  // naikkan tiap rilis: SW baru terpasang & cache lama dibuang
 const AWAL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
